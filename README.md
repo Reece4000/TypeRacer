@@ -1,2 +1,4 @@
 # TypeRacer
- A game/app that tests the user's typing speed. Built with Python and Tkinter
+ A game/app that tests the user's typing speed. Built using Python and Tkinter.
+
+![image](https://user-images.githubusercontent.com/83663539/207993506-f7483a45-c2ca-4ad9-9292-6955db309396.png)
