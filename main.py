@@ -70,7 +70,7 @@ def clock():
             min_string = str(m)
     else:
         s = s + 0.2
-    time_mins_secs = min_string  + " : " + sec_string
+    time_mins_secs = min_string  + ":" + sec_string
 
     time_str.set(time_mins_secs)
     words_per_min = str((words_typed_successfully / ((m * 60) + s)) * 60)
@@ -231,8 +231,8 @@ if __name__ == "__main__":
     tk.Label(timer_frame, textvariable=comb_var, width=60, bd=5, font=(FNT, 18, BLD), bg=MAIN_BG).pack()
     comb_var.set("Words: 0    WPM: 0.0    Accuracy: 0.00%")
 
-    tk.Button(timer_frame, textvariable=time_str, width=30, bd=5, height=2, font=(FNT, 90, BLD), bg=HILITE).pack(pady=30, padx=30)
-    time_str.set('00 : 00')
+    tk.Label(timer_frame, textvariable=time_str, width=30, bd=5, height=2, font=(FNT, 90, BLD), bg=MAIN_BG).pack(pady=30, padx=30)
+    time_str.set('00:00')
 
     reset_btn = tk.Button(app, text="Reset", width=6, bd=3, font=(FNT, 16, BLD), bg=HILITE,
                           command=lambda: reset(app, button_frame)).place(relx=.01, rely=.01)
