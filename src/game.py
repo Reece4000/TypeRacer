@@ -5,17 +5,23 @@ import os
 import sqlite3
 from pathlib import Path
 from datetime import datetime
+from src.easing import Easing
+import math
 
 # Initialize Pygame
 pygame.init()
 pygame.mixer.init()
+
+title_mod = Easing(0, decay=0.1)
+bg_brightness_mod = Easing(0, decay=0.1)
+
 
 # Constants - Retro CRT Color Scheme
 # Base resolution (will be scaled)
 BASE_WIDTH = 640
 BASE_HEIGHT = 720
 
-FPS = 60
+FPS = 30
 
 # Retro green phosphor CRT colors
 CRT_BLACK = (10, 12, 10)
@@ -54,7 +60,7 @@ SCANLINE_SPACING = 3
 
 # UI Geometry - All rect definitions in one place
 # Buttons
-BUTTON_W = 184
+BUTTON_W = 180
 BUTTON_H = 42
 BUTTON_RESET = pygame.Rect(BASE_WIDTH // 2 - BUTTON_W - 4, BASE_HEIGHT - (BUTTON_H + 12), BUTTON_W, BUTTON_H)
 BUTTON_SCORES = pygame.Rect(BASE_WIDTH // 2 + 4, BASE_HEIGHT - (BUTTON_H + 12), BUTTON_W, BUTTON_H)
@@ -134,6 +140,28 @@ class TypeRacerGame:
         # Screen state
         self.current_screen = "game"  # "game" or "scores"
 
+        self.init_crt_effects()
+
+    def init_crt_effects(self):
+        w, h = self.screen.get_size()
+
+        # --- Scanlines ---
+        self.scanlines = pygame.Surface((w, h), pygame.SRCALPHA)
+        for y in range(h):
+            darkness = 60 if (y % 2 == 0) else 0
+            pygame.draw.line(self.scanlines, (0, 0, 0, darkness), (0, y), (w, y))
+
+        # --- Aperture grille mask (vertical RGB stripes) ---
+        self.aperture = pygame.Surface((w, h), pygame.SRCALPHA)
+        stripe_w = 3
+        for x in range(0, w, stripe_w * 3):
+            pygame.draw.rect(self.aperture, (255, 0, 0, 25), (x, 0, stripe_w, h))
+            pygame.draw.rect(self.aperture, (0, 255, 0, 25), (x + stripe_w, 0, stripe_w, h))
+            pygame.draw.rect(self.aperture, (0, 0, 255, 25), (x + stripe_w * 2, 0, stripe_w, h))
+
+        # --- Noise buffer ---
+        self.noise_surface = pygame.Surface((w, h), pygame.SRCALPHA)
+
     def load_sounds(self):
         """Load sound effects"""
         try:
@@ -159,7 +187,7 @@ class TypeRacerGame:
         font_size_large = 56
         font_size_medium = 36
         font_size_small = 24
-        font_size_tiny = 18
+        font_size_tiny = 16
 
         # Try to load the custom pixel fonts
         try:
@@ -170,7 +198,7 @@ class TypeRacerGame:
             self.font_large = pygame.font.Font(str(fonts_path / "PixelOperatorMono-Bold.ttf"), font_size_large)
             self.font_medium = pygame.font.Font(str(fonts_path / "PixelOperatorMono-Bold.ttf"), font_size_medium)
             self.font_small = pygame.font.Font(str(fonts_path / "PixelOperatorMono.ttf"), font_size_small)
-            self.font_tiny = pygame.font.Font(str(fonts_path / "PixelOperatorMono.ttf"), font_size_tiny)
+            self.font_tiny = pygame.font.Font(str(fonts_path / "PixelOperatorMono-Bold.ttf"), font_size_tiny)
 
             # Store the base font path for dynamic font loading
             self.pixel_font_path = fonts_path / "PixelOperatorMono.ttf"
@@ -358,10 +386,12 @@ class TypeRacerGame:
             self.words_typed_successfully += 1
             self.input_flash = CORRECT_COLOR
             if self.sound_good:
+                bg_brightness_mod.current = 64
                 self.sound_good.play()
         else:
             self.input_flash = INCORRECT_COLOR
             if self.sound_bad:
+                bg_brightness_mod.current = -64
                 self.sound_bad.play()
 
         # Update accuracy
@@ -384,6 +414,8 @@ class TypeRacerGame:
                 pass
 
             elif event.type == pygame.KEYDOWN:
+                mods = pygame.key.get_mods()
+
                 if event.key == pygame.K_ESCAPE:
                     self.running = False
 
@@ -391,7 +423,10 @@ class TypeRacerGame:
                     self.process_word_input()
 
                 elif event.key == pygame.K_BACKSPACE:
-                    self.input_text = self.input_text[:-1]
+                    if mods & pygame.KMOD_CTRL:
+                        self.input_text = ""
+                    else:
+                        self.input_text = self.input_text[:-1]
 
                 elif event.key == pygame.K_DELETE and pygame.key.get_mods() & pygame.KMOD_CTRL:
                     # CTRL+DELETE deletes entire word
@@ -618,15 +653,67 @@ class TypeRacerGame:
         self.draw_retro_text("Press CTRL+R to play again", self.font_tiny, RETRO_WHITE,
                            BASE_WIDTH // 2, stats_y, center=True, shadow=False)
 
+    def crt_horizontal_warp(self, source):
+        w, h = source.get_size()
+        # Ensure warped surface uses SRCALPHA for transparency if needed
+        warped = pygame.Surface((w, h), pygame.SRCALPHA)
+        time_ms = pygame.time.get_ticks()
+
+        for y in range(h):
+            # Calculate the shift (same as before)
+            shift = int(2 * math.sin(y * 0.005 + time_ms * 0.002))
+
+            # This method uses Pygame's efficient internal blitting function
+            # It copies the strip of the 'source' (area=...) onto 'warped'
+            # but offset by 'shift' pixels at the current row 'y'.
+            warped.blit(source, (shift, y), area=pygame.Rect(0, y, w, 1))
+
+        return warped
+
+    def draw_crt_noise(self):
+        w, h = self.noise_surface.get_size()
+
+        # 1. Decay the old noise
+        # Blit the existing noise surface onto itself, but with slight transparency.
+        # This simulates a mild phosphor decay, creating "streaks" instead of blinking dots.
+        self.noise_surface.blit(self.noise_surface, (0, 0))
+        # Fill with a very faint black (low alpha) to decay the old noise gently
+        decay_layer = pygame.Surface((w, h), pygame.SRCALPHA)
+        decay_layer.fill((0, 0, 0, 10))  # Alpha 10 for soft decay
+        self.noise_surface.blit(decay_layer, (0, 0))
+
+        # 2. Add New Random Noise (More efficient way)
+        amount = max(100, (w * h) // 1000)
+
+        # Use a small temporary surface for noise (faster than drawing 1x1 rects)
+        # The `amount` of noise is now represented by the number of dots drawn.
+
+        for _ in range(amount):
+            x = random.randrange(0, w)
+            y = random.randrange(0, h)
+
+            # Color: Use a slightly wider range for better visual pop
+            v = random.randint(100, 180)
+            a = random.randint(10, 30)
+
+            # Option A: Use a temporary small surface for drawing the dot (very minor perf gain over rect)
+            dot = pygame.Surface((1, 1), pygame.SRCALPHA)
+            dot.fill((v, v, v, a))
+            self.noise_surface.blit(dot, (x, y))
+
+            # Option B: Stick to your original, simple, and readable method:
+            # pygame.draw.rect(self.noise_surface, (v, v, v, a), (x, y, 1, 1))
+
+        return self.noise_surface
+
     def draw_scores_screen(self):
         """Draw the scores display screen"""
         # Clear screen
-        self.screen.fill(BG_COLOR)
         self.draw_retro_grid()
 
         # Title
         self.draw_retro_text("HIGH SCORES", self.font_title, TITLE_COLOR,
-                           BASE_WIDTH // 2, TITLE_Y, center=True)
+                             BASE_WIDTH // 2, TITLE_Y, center=True)
 
         # Back button
         mouse_pos = pygame.mouse.get_pos()
@@ -640,7 +727,7 @@ class TypeRacerGame:
         scores = self.get_all_scores()
 
         # Draw headers
-        header_text = f"{'#':<2s}    {'WPM':>6s}   {'ACC%':>6s}   {'WORDS':>5s}   DATE & TIME"
+        header_text = f"{'#':<2s}    {'WPM':>6s}      {'ACC%':>6s}      {'WORDS':>5s}    DATE & TIME"
         self.draw_retro_text(header_text, self.font_tiny, RETRO_CYAN,
                            SCORES_LIST_X, SCORES_HEADER_Y, center=False, shadow=False)
 
@@ -657,7 +744,7 @@ class TypeRacerGame:
                                BASE_WIDTH // 2, y_pos + 50, center=True)
         else:
             for i, (wpm, accuracy, words_typed, date_time) in enumerate(scores[:15], 1):
-                score_line = f"{i:<2d}    {wpm:>6.1f}   {accuracy:>6.1f}   {words_typed:>5d}   {date_time}"
+                score_line = f"{i:<2d}     {wpm:>6.1f}     {accuracy:>6.1f}     {words_typed:>5d}     {date_time}"
 
                 # Color based on rank
                 if i == 1:
@@ -686,14 +773,49 @@ class TypeRacerGame:
             if self.flash_timer <= 0:
                 self.input_flash = False
 
+    def draw_bg(self):
+        # Clear screen
+        if bg_brightness_mod.is_animating:
+            r, g, b = BG_COLOR
+            curr = bg_brightness_mod.current
+            rand = random.randint(0, 8)
+            if curr < 0:
+                r = min(255, max(r - int(bg_brightness_mod.current + rand), 0))
+                g = min(255, max(g + int(bg_brightness_mod.current / 2 + rand / 2), 0))
+            else:
+                r = min(255, max(r - int(bg_brightness_mod.current / 2 + rand / 3), 0))
+                g = min(255, max(g + int(bg_brightness_mod.current + rand / 2), 0))
+            b = min(255, max(b + rand, 0))
+            bg = (r, g, b)
+        else:
+            # Base colour
+            r0, g0, b0 = BG_COLOR
+
+            # Low-frequency brightness oscillation (CRT phosphor decay / refresh)
+            # Produces values roughly in the 0.95–1.05 range
+            t = pygame.time.get_ticks() * 0.001
+            lf = 1.0 + 0.03 * math.sin(t * 55.0)  # small amplitude, moderate speed
+
+            # High-frequency noise (beam jitter / line noise)
+            hf = random.uniform(-0.015, 0.015)
+
+            scale = lf + hf
+
+            # Apply combined scaling
+            r = int(r0 * scale)
+            g = int(g0 * scale)
+            b = int(b0 * scale)
+
+            bg = (r, g, b)
+
+        self.screen.fill(bg)
+
     def draw(self):
         """Draw everything"""
+        self.draw_bg()
         if self.current_screen == "scores":
             self.draw_scores_screen()
         else:
-            # Clear screen
-            self.screen.fill(BG_COLOR)
-
             # Draw grid background for retro effect
             self.draw_retro_grid()
 
@@ -713,7 +835,16 @@ class TypeRacerGame:
             self.screen.blit(self.scanline_surface, (0, 0))
 
         # Update display
+        frame = self.crt_horizontal_warp(self.screen)
+
+        frame.blit(self.scanlines, (0, 0), special_flags=pygame.BLEND_RGBA_SUB)
+        frame.blit(self.aperture, (0, 0), special_flags=pygame.BLEND_RGBA_MULT)
+        # frame.blit(self.draw_crt_noise(), (0, 0), special_flags=pygame.BLEND_RGBA_ADD)
+
+        self.screen.blit(frame, (0, 0))
+
         pygame.display.flip()
+        bg_brightness_mod.update()
 
     def draw_retro_grid(self):
         """Draw a subtle grid background for retro aesthetic"""
