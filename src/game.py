@@ -15,11 +15,10 @@ pygame.mixer.init()
 title_mod = Easing(0, decay=0.1)
 global_mod = Easing(0, decay=0.1)
 
-
 # Constants - Retro CRT Color Scheme
 # Base resolution (will be scaled)
 BASE_WIDTH = 640
-BASE_HEIGHT = 720
+BASE_HEIGHT = 586
 
 FPS = 30
 
@@ -46,6 +45,7 @@ RETRO_YELLOW = (255, 234, 89)
 BG_COLOR = RETRO_BG
 TEXT_COLOR = RETRO_CYAN
 TITLE_COLOR = RETRO_PINK
+TITLE_COLOR2 = RETRO_CYAN
 INPUT_BG = (40, 35, 60)
 INPUT_TEXT = RETRO_WHITE
 CORRECT_COLOR = RETRO_GREEN
@@ -60,11 +60,11 @@ SCANLINE_SPACING = 3
 
 # UI Geometry - All rect definitions in one place
 # Buttons
-BUTTON_W = 180
-BUTTON_H = 42
-BUTTON_RESET = pygame.Rect(BASE_WIDTH // 2 - BUTTON_W - 4, BASE_HEIGHT - (BUTTON_H + 12), BUTTON_W, BUTTON_H)
-BUTTON_SCORES = pygame.Rect(BASE_WIDTH // 2 + 4, BASE_HEIGHT - (BUTTON_H + 12), BUTTON_W, BUTTON_H)
-BUTTON_BACK = pygame.Rect(BASE_WIDTH // 2 - BUTTON_W // 2, BASE_HEIGHT - (BUTTON_H + 12), BUTTON_W, BUTTON_H)
+BUTTON_W = 80
+BUTTON_H = 32
+BUTTON_RESET = pygame.Rect(BASE_WIDTH - BUTTON_W*2 - 8, 4, BUTTON_W, BUTTON_H)
+BUTTON_SCORES = pygame.Rect(BASE_WIDTH - BUTTON_W - 4, 4, BUTTON_W, BUTTON_H)
+BUTTON_BACK = pygame.Rect(BASE_WIDTH - BUTTON_W - 4, 4, BUTTON_W, BUTTON_H)
 
 # Input box
 INPUT_BOX_WIDTH = 480
@@ -74,10 +74,10 @@ INPUT_BOX_Y = 480
 INPUT_BOX = pygame.Rect(INPUT_BOX_X, INPUT_BOX_Y, INPUT_BOX_WIDTH, INPUT_BOX_HEIGHT)
 
 # Timer
-TIMER_Y = 620
-TIMER_WIDTH = 288
+TIMER_Y = 72
+TIMER_WIDTH = 164
 TIMER_HEIGHT = 64
-TIMER_RECT = pygame.Rect(BASE_WIDTH // 2 - 144, TIMER_Y - 32, TIMER_WIDTH, TIMER_HEIGHT)
+TIMER_RECT = pygame.Rect(BASE_WIDTH - BUTTON_W*2 - 8, TIMER_Y - 32, TIMER_WIDTH, TIMER_HEIGHT)
 
 # Game over overlay
 GAME_OVER_BOX_WIDTH = 400
@@ -87,13 +87,13 @@ GAME_OVER_BOX_Y = (BASE_HEIGHT - GAME_OVER_BOX_HEIGHT) // 2
 GAME_OVER_BOX = pygame.Rect(GAME_OVER_BOX_X, GAME_OVER_BOX_Y, GAME_OVER_BOX_WIDTH, GAME_OVER_BOX_HEIGHT)
 
 # Y positions
-TITLE_Y = 40
+TITLE_Y = 2
 ROAD_START_Y = 440
 ROAD_SPACING_Y = 28
 STATS_Y = 560
-SCORES_HEADER_Y = 130
+SCORES_HEADER_Y = 100
 SCORES_LIST_X = 100
-SCORES_LIST_Y = 180
+SCORES_LIST_Y = 150
 
 
 class TypeRacerGame:
@@ -136,7 +136,7 @@ class TypeRacerGame:
 
         # Initialize database
         self.init_database()
-        
+
         self.init_background_cache()
 
         # Screen state
@@ -227,7 +227,7 @@ class TypeRacerGame:
         self.scanline_surface = pygame.Surface((BASE_WIDTH, BASE_HEIGHT), pygame.SRCALPHA)
         for y in range(0, BASE_HEIGHT, SCANLINE_SPACING):
             pygame.draw.line(self.scanline_surface, (0, 0, 0, SCANLINE_ALPHA),
-                           (0, y), (BASE_WIDTH, y), 1)
+                             (0, y), (BASE_WIDTH, y), 1)
 
     def init_database(self):
         """Initialize SQLite database for storing scores"""
@@ -488,7 +488,59 @@ class TypeRacerGame:
 
     def draw_road(self):
         """Draw the road of upcoming words with retro 3D perspective effect - bottom to top"""
-        words = self.get_upcoming_words(13)
+
+        mod = global_mod.current
+        road_w = INPUT_BOX_WIDTH // 2 - 2
+        road_h = 480
+        road_y = -4
+
+        pts = [
+            (BASE_WIDTH // 2 - 10, road_y),
+            (BASE_WIDTH // 2 - road_w, road_h),
+            (BASE_WIDTH // 2 + road_w, road_h),
+            (BASE_WIDTH // 2 + 10, road_y),
+        ]
+
+        t = pygame.time.get_ticks()
+
+        bottom_color = (48, 0, 84)
+        top_color = (2, 33, 24)
+
+        w = BASE_WIDTH
+        h = road_h - road_y
+
+        band_count = 12  # smaller = larger, chunkier bands
+        band_height = h // band_count
+
+        grad = pygame.Surface((w, h), pygame.SRCALPHA)
+
+        speed = 12
+        scroll = (t * speed // 1000) % band_height
+
+        for i in range(band_count):
+            tcol = i / (band_count - 1)
+            r = int(top_color[0] * (1 - tcol) + bottom_color[0] * tcol)
+            g = int(top_color[1] * (1 - tcol) + bottom_color[1] * tcol)
+            b = int(top_color[2] * (1 - tcol) + bottom_color[2] * tcol)
+
+            # perspective exaggeration per band
+            # deeper bands move faster
+            offset = (mod + scroll * (i - 1) // 2) % band_height
+
+            y0 = i * band_height + offset
+            grad.fill((r, g, b, 255), pygame.Rect(0, y0, w, band_height))
+
+        # mask polygon
+        mask = pygame.Surface((w, h), pygame.SRCALPHA)
+        shifted_pts = [(x, y - road_y) for (x, y) in pts]
+        pygame.draw.polygon(mask, (255, 255, 255, 255), shifted_pts)
+
+        grad.blit(mask, (0, 0), special_flags=pygame.BLEND_RGBA_MULT)
+
+        self.screen.blit(grad, (0, road_y))
+        pygame.draw.polygon(self.screen, (80, 70, 92), pts, 2)
+
+        words = self.get_upcoming_words(15)
 
         for i, word in enumerate(words):
             if not word:
@@ -529,7 +581,6 @@ class TypeRacerGame:
             if i == 0:
                 # Current word - highlighted in pink
                 color = TITLE_COLOR
-                word_display = f">>> {word} <<<"
             else:
                 # All other words - smooth fade from bright cyan to very dim cyan
                 # Create smooth exponential fade
@@ -537,15 +588,12 @@ class TypeRacerGame:
 
                 # Use cyan (TEXT_COLOR) as base and fade it
                 color = (int(TEXT_COLOR[0] * intensity),
-                        int(TEXT_COLOR[1] * intensity),
-                        int(TEXT_COLOR[2] * intensity))
+                         int(TEXT_COLOR[1] * intensity),
+                         int(TEXT_COLOR[2] * intensity))
 
-                dash_count = (15 - len(word)) // 2
-                word_display = f"{'-' * dash_count} {word} {'-' * dash_count}"
+            y_pos -= int(mod // (6 + i))
 
-            y_pos -= int(global_mod.current // (6 + i))
-
-            self.draw_retro_text(word_display, font, color, BASE_WIDTH // 2, y_pos, center=True)
+            self.draw_retro_text(word, font, color, BASE_WIDTH // 2, y_pos, center=True)
 
     def draw_input_box(self):
         """Draw the input text box with retro styling"""
@@ -553,7 +601,7 @@ class TypeRacerGame:
         if global_mod.is_animating:
             r, g, b = INPUT_BG
             curr = global_mod.current
-            if curr > 0: # correct
+            if curr > 0:  # correct
                 g = max(0, min(255, (g + curr * 2)))
                 r = min(255, max(0, r - curr * 2))
             else:
@@ -574,7 +622,7 @@ class TypeRacerGame:
         # Draw input text
         text_to_show = self.input_text if self.input_text else ""
         self.draw_retro_text(text_to_show, self.font_large, INPUT_TEXT,
-                           INPUT_BOX.centerx, INPUT_BOX.centery, center=True, shadow=False)
+                             INPUT_BOX.centerx, INPUT_BOX.centery, center=True, shadow=False)
 
         # Draw blinking cursor
         if int(pygame.time.get_ticks() / 500) % 2 == 0:
@@ -586,7 +634,7 @@ class TypeRacerGame:
         """Draw statistics with retro styling"""
         stats_text = f"WORDS: {self.words_typed_successfully}  |  WPM: {self.wpm:.1f}  |  ACC: {self.accuracy:.1f}%"
         self.draw_retro_text(stats_text, self.font_small, STATS_COLOR,
-                           BASE_WIDTH // 2, STATS_Y + int(global_mod.current // 10), center=True)
+                             BASE_WIDTH // 2, STATS_Y + int(global_mod.current // 10), center=True)
 
     def draw_timer(self):
         """Draw countdown timer with retro digital clock styling"""
@@ -606,30 +654,34 @@ class TypeRacerGame:
         pygame.draw.rect(self.screen, RETRO_PINK, TIMER_RECT.inflate(-6, -6), 1)
 
         self.draw_retro_text(time_str, self.font_large, timer_color,
-                             BASE_WIDTH // 2, TIMER_Y, center=True)
+                             TIMER_RECT.x + TIMER_RECT.width // 2, TIMER_Y, center=True)
 
     def draw_buttons(self):
         """Draw retro styled buttons"""
         mouse_pos = pygame.mouse.get_pos()
-        
+
         # Reset button
         color = BUTTON_HOVER if BUTTON_RESET.collidepoint(mouse_pos) else BUTTON_COLOR
         pygame.draw.rect(self.screen, color, BUTTON_RESET)
         pygame.draw.rect(self.screen, RETRO_CYAN, BUTTON_RESET, 2)
         self.draw_retro_text("RESET", self.font_small, RETRO_WHITE,
-                           BUTTON_RESET.centerx, BUTTON_RESET.centery, center=True, shadow=False)
+                             BUTTON_RESET.centerx, BUTTON_RESET.centery, center=True, shadow=False)
 
         # Scores button
         color = BUTTON_HOVER if BUTTON_SCORES.collidepoint(mouse_pos) else BUTTON_COLOR
         pygame.draw.rect(self.screen, color, BUTTON_SCORES)
         pygame.draw.rect(self.screen, RETRO_CYAN, BUTTON_SCORES, 2)
         self.draw_retro_text("SCORES", self.font_small, RETRO_WHITE,
-                           BUTTON_SCORES.centerx, BUTTON_SCORES.centery, center=True, shadow=False)
+                             BUTTON_SCORES.centerx, BUTTON_SCORES.centery, center=True, shadow=False)
 
     def draw_title(self):
         """Draw retro game title"""
-        title = "TYPE RACER"
-        self.draw_retro_text(title, self.font_title, TITLE_COLOR, BASE_WIDTH // 2, TITLE_Y  - int(global_mod.current // 12), center=True)
+        mod = int(global_mod.current // 12)
+        self.draw_retro_text("T Y P E", self.font_title, TITLE_COLOR, 36 + mod,
+                             TITLE_Y - int(global_mod.current // 12))
+
+        self.draw_retro_text("R A C E R", self.font_title, TITLE_COLOR2, 12 + mod,
+                             TITLE_Y + 48 + int(global_mod.current // 12))
 
     def draw_game_over(self):
         """Draw game over overlay"""
@@ -645,25 +697,25 @@ class TypeRacerGame:
 
         # Game over text
         self.draw_retro_text("TIME'S UP!", self.font_title, RETRO_RED,
-                           BASE_WIDTH // 2, GAME_OVER_BOX.y + 48, center=True)
+                             BASE_WIDTH // 2, GAME_OVER_BOX.y + 48, center=True)
 
         # Final stats
         stats_y = GAME_OVER_BOX.y + 104
         self.draw_retro_text(f"WPM: {self.wpm:.1f}", self.font_medium, RETRO_CYAN,
-                           BASE_WIDTH // 2, stats_y, center=True, shadow=False)
+                             BASE_WIDTH // 2, stats_y, center=True, shadow=False)
 
         stats_y += 40
         self.draw_retro_text(f"Accuracy: {self.accuracy:.1f}%", self.font_small, RETRO_YELLOW,
-                           BASE_WIDTH // 2, stats_y, center=True, shadow=False)
+                             BASE_WIDTH // 2, stats_y, center=True, shadow=False)
 
         stats_y += 32
         self.draw_retro_text(f"Words: {self.words_typed_successfully}", self.font_small, RETRO_GREEN,
-                           BASE_WIDTH // 2, stats_y, center=True, shadow=False)
+                             BASE_WIDTH // 2, stats_y, center=True, shadow=False)
 
         # Instructions
         stats_y += 40
         self.draw_retro_text("Press CTRL+R to play again", self.font_tiny, RETRO_WHITE,
-                           BASE_WIDTH // 2, stats_y, center=True, shadow=False)
+                             BASE_WIDTH // 2, stats_y, center=True, shadow=False)
 
     def crt_horizontal_warp(self, source):
         w, h = source.get_size()
@@ -723,7 +775,7 @@ class TypeRacerGame:
 
         # Title
         self.draw_retro_text("HIGH SCORES", self.font_title, TITLE_COLOR,
-                             BASE_WIDTH // 2, TITLE_Y, center=True)
+                             BASE_WIDTH // 2, 50, center=True)
 
         # Back button
         mouse_pos = pygame.mouse.get_pos()
@@ -731,7 +783,7 @@ class TypeRacerGame:
         pygame.draw.rect(self.screen, color, BUTTON_BACK)
         pygame.draw.rect(self.screen, RETRO_CYAN, BUTTON_BACK, 2)
         self.draw_retro_text("BACK", self.font_small, RETRO_WHITE,
-                           BUTTON_BACK.centerx, BUTTON_BACK.centery, center=True, shadow=False)
+                             BUTTON_BACK.centerx, BUTTON_BACK.centery, center=True, shadow=False)
 
         # Get scores from database
         scores = self.get_all_scores()
@@ -739,21 +791,21 @@ class TypeRacerGame:
         # Draw headers
         header_text = f"{'#':<2s}    {'WPM':>6s}      {'ACC%':>6s}      {'WORDS':>5s}    DATE & TIME"
         self.draw_retro_text(header_text, self.font_tiny, RETRO_CYAN,
-                           SCORES_LIST_X, SCORES_HEADER_Y, center=False, shadow=False)
+                             SCORES_LIST_X, SCORES_HEADER_Y, center=False, shadow=False)
 
         # Draw separator line
         separator_y = SCORES_HEADER_Y + 30
         pygame.draw.line(self.screen, RETRO_PURPLE,
-                        (50, separator_y), (BASE_WIDTH - 50, separator_y), 2)
+                         (50, separator_y), (BASE_WIDTH - 50, separator_y), 2)
 
         # Draw scores
         y_pos = SCORES_LIST_Y
         if not scores:
             self.draw_retro_text("No scores yet. Play a game to set one!",
-                               self.font_small, RETRO_YELLOW,
-                               BASE_WIDTH // 2, y_pos + 50, center=True)
+                                 self.font_small, RETRO_YELLOW,
+                                 BASE_WIDTH // 2, y_pos + 50, center=True)
         else:
-            for i, (wpm, accuracy, words_typed, date_time) in enumerate(scores[:14], 1):
+            for i, (wpm, accuracy, words_typed, date_time) in enumerate(scores[:12], 1):
                 score_line = f"{i:<2d}     {wpm:>6.1f}     {accuracy:>6.1f}     {words_typed:>5d}     {date_time}"
 
                 # Color based on rank
@@ -767,7 +819,7 @@ class TypeRacerGame:
                     color = TEXT_COLOR
 
                 self.draw_retro_text(score_line, self.font_tiny, color,
-                                   SCORES_LIST_X, y_pos, center=False, shadow=False)
+                                     SCORES_LIST_X, y_pos, center=False, shadow=False)
                 y_pos += 34
 
         # Apply scanline effect
@@ -797,7 +849,6 @@ class TypeRacerGame:
 
         for y in range(0, BASE_HEIGHT, spacing):
             pygame.draw.line(self.grid_cache, grid_color, (0, y), (BASE_WIDTH, y), 1)
-
 
     def draw_bg(self):
         # Compute animated background color only
@@ -841,7 +892,7 @@ class TypeRacerGame:
         """Draw everything"""
         self.draw_bg()
         self.draw_retro_grid()
-        
+
         if self.current_screen == "scores":
             self.draw_scores_screen()
         else:
