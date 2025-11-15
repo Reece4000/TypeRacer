@@ -13,7 +13,7 @@ pygame.init()
 pygame.mixer.init()
 
 title_mod = Easing(0, decay=0.1)
-bg_brightness_mod = Easing(0, decay=0.1)
+global_mod = Easing(0, decay=0.1)
 
 
 # Constants - Retro CRT Color Scheme
@@ -136,6 +136,8 @@ class TypeRacerGame:
 
         # Initialize database
         self.init_database()
+        
+        self.init_background_cache()
 
         # Screen state
         self.current_screen = "game"  # "game" or "scores"
@@ -386,12 +388,12 @@ class TypeRacerGame:
             self.words_typed_successfully += 1
             self.input_flash = CORRECT_COLOR
             if self.sound_good:
-                bg_brightness_mod.current = 64
+                global_mod.current = 64
                 self.sound_good.play()
         else:
             self.input_flash = INCORRECT_COLOR
             if self.sound_bad:
-                bg_brightness_mod.current = -64
+                global_mod.current = -64
                 self.sound_bad.play()
 
         # Update accuracy
@@ -541,13 +543,24 @@ class TypeRacerGame:
                 dash_count = (15 - len(word)) // 2
                 word_display = f"{'-' * dash_count} {word} {'-' * dash_count}"
 
+            y_pos -= int(global_mod.current // (6 + i))
+
             self.draw_retro_text(word_display, font, color, BASE_WIDTH // 2, y_pos, center=True)
 
     def draw_input_box(self):
         """Draw the input text box with retro styling"""
         # Flash effect
-        if self.input_flash and self.flash_timer > 0:
-            box_color = self.input_flash
+        if global_mod.is_animating:
+            r, g, b = INPUT_BG
+            curr = global_mod.current
+            if curr > 0: # correct
+                g = max(0, min(255, (g + curr * 2)))
+                r = min(255, max(0, r - curr * 2))
+            else:
+                g = max(0, min(255, (g + curr * 2)))
+                r = min(255, max(0, r - curr * 2))
+
+            box_color = (r, g, b)
         else:
             box_color = INPUT_BG
 
@@ -573,7 +586,7 @@ class TypeRacerGame:
         """Draw statistics with retro styling"""
         stats_text = f"WORDS: {self.words_typed_successfully}  |  WPM: {self.wpm:.1f}  |  ACC: {self.accuracy:.1f}%"
         self.draw_retro_text(stats_text, self.font_small, STATS_COLOR,
-                           BASE_WIDTH // 2, STATS_Y, center=True)
+                           BASE_WIDTH // 2, STATS_Y + int(global_mod.current // 10), center=True)
 
     def draw_timer(self):
         """Draw countdown timer with retro digital clock styling"""
@@ -598,7 +611,7 @@ class TypeRacerGame:
     def draw_buttons(self):
         """Draw retro styled buttons"""
         mouse_pos = pygame.mouse.get_pos()
-
+        
         # Reset button
         color = BUTTON_HOVER if BUTTON_RESET.collidepoint(mouse_pos) else BUTTON_COLOR
         pygame.draw.rect(self.screen, color, BUTTON_RESET)
@@ -616,8 +629,7 @@ class TypeRacerGame:
     def draw_title(self):
         """Draw retro game title"""
         title = "TYPE RACER"
-        self.draw_retro_text(title, self.font_title, TITLE_COLOR,
-                           BASE_WIDTH // 2, TITLE_Y, center=True)
+        self.draw_retro_text(title, self.font_title, TITLE_COLOR, BASE_WIDTH // 2, TITLE_Y  - int(global_mod.current // 12), center=True)
 
     def draw_game_over(self):
         """Draw game over overlay"""
@@ -708,8 +720,6 @@ class TypeRacerGame:
 
     def draw_scores_screen(self):
         """Draw the scores display screen"""
-        # Clear screen
-        self.draw_retro_grid()
 
         # Title
         self.draw_retro_text("HIGH SCORES", self.font_title, TITLE_COLOR,
@@ -743,7 +753,7 @@ class TypeRacerGame:
                                self.font_small, RETRO_YELLOW,
                                BASE_WIDTH // 2, y_pos + 50, center=True)
         else:
-            for i, (wpm, accuracy, words_typed, date_time) in enumerate(scores[:15], 1):
+            for i, (wpm, accuracy, words_typed, date_time) in enumerate(scores[:14], 1):
                 score_line = f"{i:<2d}     {wpm:>6.1f}     {accuracy:>6.1f}     {words_typed:>5d}     {date_time}"
 
                 # Color based on rank
@@ -758,7 +768,7 @@ class TypeRacerGame:
 
                 self.draw_retro_text(score_line, self.font_tiny, color,
                                    SCORES_LIST_X, y_pos, center=False, shadow=False)
-                y_pos += 35
+                y_pos += 34
 
         # Apply scanline effect
         self.screen.blit(self.scanline_surface, (0, 0))
@@ -773,51 +783,68 @@ class TypeRacerGame:
             if self.flash_timer <= 0:
                 self.input_flash = False
 
+    def init_background_cache(self):
+        """Call once after creating self.screen."""
+        self.bg_cache = pygame.Surface((BASE_WIDTH, BASE_HEIGHT)).convert()
+        self.grid_cache = pygame.Surface((BASE_WIDTH, BASE_HEIGHT), pygame.SRCALPHA).convert_alpha()
+
+        # Pre-render static retro grid into grid_cache
+        grid_color = (30, 25, 45)
+        spacing = 40
+
+        for x in range(0, BASE_WIDTH, spacing):
+            pygame.draw.line(self.grid_cache, grid_color, (x, 0), (x, BASE_HEIGHT), 1)
+
+        for y in range(0, BASE_HEIGHT, spacing):
+            pygame.draw.line(self.grid_cache, grid_color, (0, y), (BASE_WIDTH, y), 1)
+
+
     def draw_bg(self):
-        # Clear screen
-        if bg_brightness_mod.is_animating:
+        # Compute animated background color only
+        if global_mod.is_animating:
             r, g, b = BG_COLOR
-            curr = bg_brightness_mod.current
+            curr = global_mod.current
             rand = random.randint(0, 8)
+
             if curr < 0:
-                r = min(255, max(r - int(bg_brightness_mod.current + rand), 0))
-                g = min(255, max(g + int(bg_brightness_mod.current / 2 + rand / 2), 0))
+                r = min(255, max(r - int(curr + rand), 0))
+                g = min(255, max(g + int(curr / 2 + rand / 2), 0))
             else:
-                r = min(255, max(r - int(bg_brightness_mod.current / 2 + rand / 3), 0))
-                g = min(255, max(g + int(bg_brightness_mod.current + rand / 2), 0))
+                r = min(255, max(r - int(curr / 2 + rand / 3), 0))
+                g = min(255, max(g + int(curr + rand / 2), 0))
+
             b = min(255, max(b + rand, 0))
             bg = (r, g, b)
+
         else:
-            # Base colour
             r0, g0, b0 = BG_COLOR
-
-            # Low-frequency brightness oscillation (CRT phosphor decay / refresh)
-            # Produces values roughly in the 0.95–1.05 range
             t = pygame.time.get_ticks() * 0.001
-            lf = 1.0 + 0.03 * math.sin(t * 55.0)  # small amplitude, moderate speed
-
-            # High-frequency noise (beam jitter / line noise)
+            lf = 1.0 + 0.03 * math.sin(t * 55.0)
             hf = random.uniform(-0.015, 0.015)
-
             scale = lf + hf
 
-            # Apply combined scaling
-            r = int(r0 * scale)
-            g = int(g0 * scale)
-            b = int(b0 * scale)
+            bg = (
+                int(r0 * scale),
+                int(g0 * scale),
+                int(b0 * scale)
+            )
 
-            bg = (r, g, b)
+        # Fill a cached surface with the new animated colour only
+        self.bg_cache.fill(bg)
 
-        self.screen.fill(bg)
+        # Blit background colour
+        self.screen.blit(self.bg_cache, (0, 0))
+        # Blit static retro grid overlay
+        self.screen.blit(self.grid_cache, (0, 0))
 
     def draw(self):
         """Draw everything"""
         self.draw_bg()
+        self.draw_retro_grid()
+        
         if self.current_screen == "scores":
             self.draw_scores_screen()
         else:
-            # Draw grid background for retro effect
-            self.draw_retro_grid()
 
             # Draw game elements
             self.draw_title()
@@ -844,7 +871,7 @@ class TypeRacerGame:
         self.screen.blit(frame, (0, 0))
 
         pygame.display.flip()
-        bg_brightness_mod.update()
+        global_mod.update()
 
     def draw_retro_grid(self):
         """Draw a subtle grid background for retro aesthetic"""
