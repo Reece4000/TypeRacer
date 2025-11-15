@@ -67,7 +67,7 @@ BUTTON_SCORES = pygame.Rect(BASE_WIDTH - BUTTON_W - 4, 4, BUTTON_W, BUTTON_H)
 BUTTON_BACK = pygame.Rect(BASE_WIDTH - BUTTON_W - 4, 4, BUTTON_W, BUTTON_H)
 
 # Input box
-INPUT_BOX_WIDTH = 480
+INPUT_BOX_WIDTH = BASE_WIDTH - 36
 INPUT_BOX_HEIGHT = 64
 INPUT_BOX_X = (BASE_WIDTH - INPUT_BOX_WIDTH) // 2
 INPUT_BOX_Y = 480
@@ -88,8 +88,8 @@ GAME_OVER_BOX = pygame.Rect(GAME_OVER_BOX_X, GAME_OVER_BOX_Y, GAME_OVER_BOX_WIDT
 
 # Y positions
 TITLE_Y = 2
-ROAD_START_Y = 440
-ROAD_SPACING_Y = 28
+ROAD_START_Y = 430
+ROAD_SPACING_Y = 54
 STATS_Y = 560
 SCORES_HEADER_Y = 100
 SCORES_LIST_X = 100
@@ -540,7 +540,7 @@ class TypeRacerGame:
         self.screen.blit(grad, (0, road_y))
         pygame.draw.polygon(self.screen, (80, 70, 92), pts, 2)
 
-        words = self.get_upcoming_words(15)
+        words = self.get_upcoming_words(8)
 
         for i, word in enumerate(words):
             if not word:
@@ -548,11 +548,12 @@ class TypeRacerGame:
 
             # Position 0 (closest to input) is at bottom
             # Higher positions move upward
-            y_pos = ROAD_START_Y - (i * ROAD_SPACING_Y)
 
             # Calculate size dynamically - smooth decrease for ALL positions
             # Start at 36 and decrease smoothly (scaled down)
-            font_size = max(10, int(36 - (i * 2)))  # Decreases from 36 to 10
+            font_size = max(2, int(64 - (i * 6.4)))  # Decreases from 36 to 10
+
+            y_pos = ROAD_START_Y - (i * ROAD_SPACING_Y)
 
             # Load font dynamically with caching to reduce CPU usage
             if self.pixel_font_path:
@@ -584,7 +585,7 @@ class TypeRacerGame:
             else:
                 # All other words - smooth fade from bright cyan to very dim cyan
                 # Create smooth exponential fade
-                intensity = max(0.15, 1.0 - (i * 0.07))  # Smooth fade from 1.0 to 0.15
+                intensity = max(0.15, 1.0 - (i * 0.104))  # Smooth fade from 1.0 to 0.15
 
                 # Use cyan (TEXT_COLOR) as base and fade it
                 color = (int(TEXT_COLOR[0] * intensity),
@@ -632,7 +633,7 @@ class TypeRacerGame:
 
     def draw_stats(self):
         """Draw statistics with retro styling"""
-        stats_text = f"WORDS: {self.words_typed_successfully}  |  WPM: {self.wpm:.1f}  |  ACC: {self.accuracy:.1f}%"
+        stats_text = f"WORDS: {self.words_typed_successfully}    |    WPM: {self.wpm:.1f}    |    ACC: {self.accuracy:.1f}%"
         self.draw_retro_text(stats_text, self.font_small, STATS_COLOR,
                              BASE_WIDTH // 2, STATS_Y + int(global_mod.current // 10), center=True)
 
