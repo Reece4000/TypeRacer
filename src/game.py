@@ -23,7 +23,7 @@ BASE_HEIGHT = 586
 FPS = 30
 
 # Retro green phosphor CRT colors
-CRT_BLACK = (10, 12, 10)
+CRT_BLACK = (20, 24, 20)
 CRT_GREEN = (51, 255, 51)
 CRT_GREEN_DIM = (20, 120, 20)
 CRT_GREEN_BRIGHT = (102, 255, 102)
@@ -31,7 +31,7 @@ CRT_AMBER = (255, 176, 0)
 CRT_AMBER_DIM = (153, 102, 0)
 
 # Alternative retro palette
-RETRO_BG = (24, 20, 37)
+RETRO_BG = (12, 26, 24)
 RETRO_BLUE = (76, 132, 255)
 RETRO_PINK = (255, 89, 157)
 RETRO_PURPLE = (138, 68, 255)
@@ -280,7 +280,7 @@ class TypeRacerGame:
             cursor.execute('''
                 SELECT wpm, accuracy, words_typed, date_time
                 FROM scores
-                ORDER BY date_time DESC
+                ORDER BY wpm DESC
                 LIMIT 20
             ''')
             return cursor.fetchall()
@@ -490,21 +490,23 @@ class TypeRacerGame:
         """Draw the road of upcoming words with retro 3D perspective effect - bottom to top"""
 
         mod = global_mod.current
-        road_w = INPUT_BOX_WIDTH // 2 - 2
-        road_h = 480
+        road_w = BASE_WIDTH // 1.5
+        road_h = BASE_HEIGHT
         road_y = -4
 
         pts = [
-            (BASE_WIDTH // 2 - 10, road_y),
+            (BASE_WIDTH // 2 - 12, road_y),
             (BASE_WIDTH // 2 - road_w, road_h),
-            (BASE_WIDTH // 2 + road_w, road_h),
+            (BASE_WIDTH // 2 + road_w - 2, road_h),
             (BASE_WIDTH // 2 + 10, road_y),
         ]
 
-        t = pygame.time.get_ticks()
 
-        bottom_color = (48, 0, 84)
-        top_color = (2, 33, 24)
+        t = pygame.time.get_ticks()
+        pygame.draw.polygon(self.screen, (0, 24, 26), pts)
+
+        bottom_color = (64, 0, 84)
+        top_color = (12, 33, 45)
 
         w = BASE_WIDTH
         h = road_h - road_y
@@ -514,10 +516,12 @@ class TypeRacerGame:
 
         grad = pygame.Surface((w, h), pygame.SRCALPHA)
 
-        speed = 12
-        scroll = (t * speed // 1000) % band_height
+        speed = 28
+        scroll = (t * speed // 3600)
+
 
         for i in range(band_count):
+            rando = int(random.random() * 24)
             tcol = i / (band_count - 1)
             r = int(top_color[0] * (1 - tcol) + bottom_color[0] * tcol)
             g = int(top_color[1] * (1 - tcol) + bottom_color[1] * tcol)
@@ -525,10 +529,11 @@ class TypeRacerGame:
 
             # perspective exaggeration per band
             # deeper bands move faster
-            offset = (mod + scroll * (i - 1) // 2) % band_height
+            offset = (mod + scroll * (1 - i) // 2) % band_height
 
             y0 = i * band_height + offset
-            grad.fill((r, g, b, 255), pygame.Rect(0, y0, w, band_height))
+
+            grad.fill((r, g, b), pygame.Rect(0, y0 + offset + mod, w, min(48, max(12, band_height - offset // 2 - mod + rando))))
 
         # mask polygon
         mask = pygame.Surface((w, h), pygame.SRCALPHA)
@@ -538,7 +543,9 @@ class TypeRacerGame:
         grad.blit(mask, (0, 0), special_flags=pygame.BLEND_RGBA_MULT)
 
         self.screen.blit(grad, (0, road_y))
-        pygame.draw.polygon(self.screen, (80, 70, 92), pts, 2)
+
+
+        pygame.draw.polygon(self.screen, (20, 140, 140), pts, 4)
 
         words = self.get_upcoming_words(8)
 
@@ -678,11 +685,11 @@ class TypeRacerGame:
     def draw_title(self):
         """Draw retro game title"""
         mod = int(global_mod.current // 12)
-        self.draw_retro_text("T Y P E", self.font_title, TITLE_COLOR, 36 + mod,
-                             TITLE_Y - int(global_mod.current // 12))
+        self.draw_retro_text("T Y P E", self.font_title, TITLE_COLOR, 32 + mod,
+                             TITLE_Y - 4 - int(global_mod.current // 12))
 
-        self.draw_retro_text("R A C E R", self.font_title, TITLE_COLOR2, 12 + mod,
-                             TITLE_Y + 48 + int(global_mod.current // 12))
+        self.draw_retro_text("R A C E R", self.font_title, TITLE_COLOR2, 8 + mod,
+                             TITLE_Y + 36 + int(global_mod.current // 12))
 
     def draw_game_over(self):
         """Draw game over overlay"""
@@ -899,8 +906,8 @@ class TypeRacerGame:
         else:
 
             # Draw game elements
-            self.draw_title()
             self.draw_road()
+            self.draw_title()
             self.draw_input_box()
             self.draw_stats()
             self.draw_timer()
