@@ -1,3 +1,5 @@
+import pygame
+
 # Constants - Retro CRT Color Scheme
 # Base resolution (will be scaled)
 BASE_WIDTH = 640
