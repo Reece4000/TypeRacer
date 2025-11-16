@@ -7,98 +7,18 @@ from pathlib import Path
 from datetime import datetime
 from src.easing import Easing
 import math
+from src.constants import *
+
 
 # Initialize Pygame
 pygame.init()
 pygame.mixer.init()
 
-title_mod = Easing(0, decay=0.1)
-global_mod = Easing(0, decay=0.1)
-
-# Constants - Retro CRT Color Scheme
-# Base resolution (will be scaled)
-BASE_WIDTH = 640
-BASE_HEIGHT = 586
-
-FPS = 30
-
-# Retro green phosphor CRT colors
-CRT_BLACK = (20, 24, 20)
-CRT_GREEN = (51, 255, 51)
-CRT_GREEN_DIM = (20, 120, 20)
-CRT_GREEN_BRIGHT = (102, 255, 102)
-CRT_AMBER = (255, 176, 0)
-CRT_AMBER_DIM = (153, 102, 0)
-
-# Alternative retro palette
-RETRO_BG = (12, 26, 24)
-RETRO_BLUE = (76, 132, 255)
-RETRO_PINK = (255, 89, 157)
-RETRO_PURPLE = (138, 68, 255)
-RETRO_CYAN = (51, 255, 219)
-RETRO_WHITE = (230, 230, 230)
-RETRO_GREEN = (102, 255, 102)
-RETRO_RED = (255, 89, 89)
-RETRO_YELLOW = (255, 234, 89)
-
-# Game colors (retro theme)
-BG_COLOR = RETRO_BG
-TEXT_COLOR = RETRO_CYAN
-TITLE_COLOR = RETRO_PINK
-TITLE_COLOR2 = RETRO_CYAN
-INPUT_BG = (40, 35, 60)
-INPUT_TEXT = RETRO_WHITE
-CORRECT_COLOR = RETRO_GREEN
-INCORRECT_COLOR = RETRO_RED
-STATS_COLOR = RETRO_YELLOW
-BUTTON_COLOR = RETRO_PURPLE
-BUTTON_HOVER = RETRO_PINK
-
-# Scanline effect
-SCANLINE_ALPHA = 30
-SCANLINE_SPACING = 3
-
-# UI Geometry - All rect definitions in one place
-# Buttons
-BUTTON_W = 80
-BUTTON_H = 32
-BUTTON_RESET = pygame.Rect(BASE_WIDTH - BUTTON_W*2 - 8, 4, BUTTON_W, BUTTON_H)
-BUTTON_SCORES = pygame.Rect(BASE_WIDTH - BUTTON_W - 4, 4, BUTTON_W, BUTTON_H)
-BUTTON_BACK = pygame.Rect(BASE_WIDTH - BUTTON_W - 4, 4, BUTTON_W, BUTTON_H)
-
-# Input box
-INPUT_BOX_WIDTH = BASE_WIDTH - 36
-INPUT_BOX_HEIGHT = 64
-INPUT_BOX_X = (BASE_WIDTH - INPUT_BOX_WIDTH) // 2
-INPUT_BOX_Y = 480
-INPUT_BOX = pygame.Rect(INPUT_BOX_X, INPUT_BOX_Y, INPUT_BOX_WIDTH, INPUT_BOX_HEIGHT)
-
-# Timer
-TIMER_Y = 72
-TIMER_WIDTH = 164
-TIMER_HEIGHT = 64
-TIMER_RECT = pygame.Rect(BASE_WIDTH - BUTTON_W*2 - 8, TIMER_Y - 32, TIMER_WIDTH, TIMER_HEIGHT)
-
-# Game over overlay
-GAME_OVER_BOX_WIDTH = 400
-GAME_OVER_BOX_HEIGHT = 240
-GAME_OVER_BOX_X = (BASE_WIDTH - GAME_OVER_BOX_WIDTH) // 2
-GAME_OVER_BOX_Y = (BASE_HEIGHT - GAME_OVER_BOX_HEIGHT) // 2
-GAME_OVER_BOX = pygame.Rect(GAME_OVER_BOX_X, GAME_OVER_BOX_Y, GAME_OVER_BOX_WIDTH, GAME_OVER_BOX_HEIGHT)
-
-# Y positions
-TITLE_Y = 2
-ROAD_START_Y = 430
-ROAD_SPACING_Y = 54
-STATS_Y = 560
-SCORES_HEADER_Y = 100
-SCORES_LIST_X = 100
-SCORES_LIST_Y = 150
+global_mod = Easing(0, decay=0.1)  # used to apply animation on word submission
 
 
 class TypeRacerGame:
     def __init__(self):
-        # Create a window with SCALED flag for integer scaling (maintains pixel-perfect rendering)
         self.screen = pygame.display.set_mode((BASE_WIDTH, BASE_HEIGHT))
         pygame.display.set_caption("TYPE RACER")
 
@@ -130,19 +50,12 @@ class TypeRacerGame:
         self.input_active = True
         self.input_flash = False
         self.flash_timer = 0
-
-        # Scanline surface for retro effect
-        self.create_scanlines()
-
-        # Initialize database
-        self.init_database()
-
-        self.init_background_cache()
-
-        # Screen state
         self.current_screen = "game"  # "game" or "scores"
 
+        self.create_scanlines()
+        self.init_background_cache()
         self.init_crt_effects()
+        self.init_database()
 
     def init_crt_effects(self):
         w, h = self.screen.get_size()
@@ -163,6 +76,50 @@ class TypeRacerGame:
 
         # --- Noise buffer ---
         self.noise_surface = pygame.Surface((w, h), pygame.SRCALPHA)
+
+    def init_background_cache(self):
+        """Call once after creating self.screen."""
+        self.bg_cache = pygame.Surface((BASE_WIDTH, BASE_HEIGHT)).convert()
+        self.grid_cache = pygame.Surface((BASE_WIDTH, BASE_HEIGHT), pygame.SRCALPHA).convert_alpha()
+
+        # Pre-render static retro grid into grid_cache
+        grid_color = (30, 25, 45)
+        spacing = 40
+
+        for x in range(0, BASE_WIDTH, spacing):
+            pygame.draw.line(self.grid_cache, grid_color, (x, 0), (x, BASE_HEIGHT), 1)
+
+        for y in range(0, BASE_HEIGHT, spacing):
+            pygame.draw.line(self.grid_cache, grid_color, (0, y), (BASE_WIDTH, y), 1)
+
+    def create_scanlines(self):
+        """Create scanline overlay for CRT effect"""
+        self.scanline_surface = pygame.Surface((BASE_WIDTH, BASE_HEIGHT), pygame.SRCALPHA)
+        for y in range(0, BASE_HEIGHT, SCANLINE_SPACING):
+            pygame.draw.line(self.scanline_surface, (0, 0, 0, SCANLINE_ALPHA),
+                             (0, y), (BASE_WIDTH, y), 1)
+
+    def init_database(self):
+        """Initialize SQLite database for storing scores"""
+        try:
+            db_path = Path(__file__).parent.parent / "scores.db"
+            self.db_conn = sqlite3.connect(str(db_path))
+            cursor = self.db_conn.cursor()
+
+            # Create scores table if it doesn't exist
+            cursor.execute('''
+                CREATE TABLE IF NOT EXISTS scores (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    wpm REAL NOT NULL,
+                    accuracy REAL NOT NULL,
+                    words_typed INTEGER NOT NULL,
+                    date_time TEXT NOT NULL
+                )
+            ''')
+            self.db_conn.commit()
+        except Exception as e:
+            print(f"Error initializing database: {e}")
+            self.db_conn = None
 
     def load_sounds(self):
         """Load sound effects"""
@@ -221,36 +178,6 @@ class TypeRacerGame:
             self.pixel_font_path = None
             self.pixel_font_bold_path = None
             self.font_cache = {}
-
-    def create_scanlines(self):
-        """Create scanline overlay for CRT effect"""
-        self.scanline_surface = pygame.Surface((BASE_WIDTH, BASE_HEIGHT), pygame.SRCALPHA)
-        for y in range(0, BASE_HEIGHT, SCANLINE_SPACING):
-            pygame.draw.line(self.scanline_surface, (0, 0, 0, SCANLINE_ALPHA),
-                             (0, y), (BASE_WIDTH, y), 1)
-
-    def init_database(self):
-        """Initialize SQLite database for storing scores"""
-        try:
-            db_path = Path(__file__).parent.parent / "scores.db"
-            self.db_conn = sqlite3.connect(str(db_path))
-            cursor = self.db_conn.cursor()
-
-            # Create scores table if it doesn't exist
-            cursor.execute('''
-                CREATE TABLE IF NOT EXISTS scores (
-                    id INTEGER PRIMARY KEY AUTOINCREMENT,
-                    wpm REAL NOT NULL,
-                    accuracy REAL NOT NULL,
-                    words_typed INTEGER NOT NULL,
-                    date_time TEXT NOT NULL
-                )
-            ''')
-            self.db_conn.commit()
-        except Exception as e:
-            print(f"Error initializing database: {e}")
-            self.db_conn = None
-
     def save_score(self):
         """Save the current score to the database"""
         if self.db_conn is None:
@@ -843,21 +770,6 @@ class TypeRacerGame:
             if self.flash_timer <= 0:
                 self.input_flash = False
 
-    def init_background_cache(self):
-        """Call once after creating self.screen."""
-        self.bg_cache = pygame.Surface((BASE_WIDTH, BASE_HEIGHT)).convert()
-        self.grid_cache = pygame.Surface((BASE_WIDTH, BASE_HEIGHT), pygame.SRCALPHA).convert_alpha()
-
-        # Pre-render static retro grid into grid_cache
-        grid_color = (30, 25, 45)
-        spacing = 40
-
-        for x in range(0, BASE_WIDTH, spacing):
-            pygame.draw.line(self.grid_cache, grid_color, (x, 0), (x, BASE_HEIGHT), 1)
-
-        for y in range(0, BASE_HEIGHT, spacing):
-            pygame.draw.line(self.grid_cache, grid_color, (0, y), (BASE_WIDTH, y), 1)
-
     def draw_bg(self):
         # Compute animated background color only
         if global_mod.is_animating:
@@ -960,12 +872,3 @@ class TypeRacerGame:
 
         pygame.quit()
         sys.exit()
-
-
-def main():
-    game = TypeRacerGame()
-    game.run()
-
-
-if __name__ == "__main__":
-    main()

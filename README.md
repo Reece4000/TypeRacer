@@ -1,6 +1,6 @@
 # TYPE RACER
 
-A typing speed game with a retro CRT aesthetic, built with Pygame.
+A typing speed game with a retrowave aesthetic.
 
 ## Installation
 
@@ -11,9 +11,8 @@ A typing speed game with a retro CRT aesthetic, built with Pygame.
 
 ### Controls
 
-- **Type the word** you see highlighted at the top of the road
-- **Press SPACE or ENTER** to submit your word
-- **BACKSPACE** to delete characters
+- **Type the word** you see highlighted at the bottom of the road
+- **Press SPACE or ENTER** to submit
 - **CTRL+R** to reset the game
 - **ESC** to quit
 
